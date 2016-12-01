@@ -51,6 +51,7 @@ def poly_multid(data, pdegree=2):
 @click.pass_context
 def polyencode(ctx, inputfiles, output, poly_order, reflect):
     """
+    Encode n-inputs into one polynomial raster. Each successive input is interpreted as a step of 1.
     """
     with rio.open(inputfiles[0]) as src:
         metaprof = src.profile.copy()
@@ -76,24 +77,26 @@ def polyencode(ctx, inputfiles, output, poly_order, reflect):
 @click.argument(
     'output',
     type=click.Path(resolve_path=True))
-@click.argument('x', type=int)
-@click.option('--multiplier', '-m', type=float, default=1)
+@click.argument('x', type=float)
 @click.version_option(version=polyencode_version, message='%(version)s')
 @click.pass_context
-def polydecode(ctx, inputfile, output, x, multiplier):
+def polydecode(ctx, inputfile, output, x):
     """
+    Decode a polynomial raster for a given X value
     """
     with rio.open(inputfile) as src:
         metaprof = src.profile.copy()
         data = src.read()
 
-    x *= multiplier
-
     depth, rows, cols = data.shape
 
     depth -= 1
 
-    out = (np.sum(np.dstack([p * x ** abs(depth - d) for p, d in zip(data, range(depth))]), axis=2) + data[-1]).astype(np.float32)
+    out = (
+        np.sum(np.dstack(
+            [p * x ** abs(depth - d) for p, d in zip(data, range(depth))]
+            ), axis=2) + data[-1]
+        ).astype(np.float32)
 
     metaprof.update(dtype=np.float32, count=1)
 
