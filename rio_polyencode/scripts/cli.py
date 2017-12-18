@@ -2,6 +2,7 @@ import sys
 
 import click
 import rasterio as rio
+from rasterio.rio.options import creation_options
 
 import numpy as np
 
@@ -20,18 +21,22 @@ def read_all(inputs, reflect):
 
     return out
 
-def poly_multid(data, pdegree=2):
+def poly_multid(data, pdegree=2, variance_filter=5):
     depth, rows, cols = data.shape
     X = np.arange(depth)
+    Ys = data.reshape(depth, rows * cols)
 
     polyvals = np.dstack(
         np.polyfit(
             X,
-            data.reshape(depth, rows * cols),
+            Ys,
             pdegree
         )
     )[0].reshape(rows, cols, pdegree + 1)
-        
+
+    # set areas that have little variance
+    polyvals[(np.max(Ys, axis=0) < variance_filter).reshape(rows, cols)] = 0
+
     return polyvals
 
 
@@ -49,19 +54,21 @@ def poly_multid(data, pdegree=2):
 @click.option('--reflect', '-r', type=int, default=0)
 @click.version_option(version=polyencode_version, message='%(version)s')
 @click.pass_context
-def polyencode(ctx, inputfiles, output, poly_order, reflect):
+@creation_options
+def polyencode(ctx, inputfiles, output, poly_order, reflect, creation_options):
     """
     Encode n-inputs into one polynomial raster. Each successive input is interpreted as a step of 1.
     """
     with rio.open(inputfiles[0]) as src:
         metaprof = src.profile.copy()
 
-    metaprof.update(dtype=np.float32, count=(poly_order + 1))
+    metaprof.update(**creation_options)
+    metaprof.update(dtype=np.float32, count=(poly_order + 1), compress='deflate')
 
     verbosity = (ctx.obj and ctx.obj.get('verbosity')) or 1
 
     data = read_all(inputfiles, reflect)
-    
+
     out = poly_multid(data, poly_order).astype(np.float32)
 
     with rio.open(output, 'w', **metaprof) as dst:
@@ -78,9 +85,11 @@ def polyencode(ctx, inputfiles, output, poly_order, reflect):
     'output',
     type=click.Path(resolve_path=True))
 @click.argument('x', type=float)
+@click.option('--multiplier', '-m', type=float, default=1)
 @click.version_option(version=polyencode_version, message='%(version)s')
 @click.pass_context
-def polydecode(ctx, inputfile, output, x):
+@creation_options
+def polydecode(ctx, inputfile, output, x, multiplier, creation_options):
     """
     Decode a polynomial raster for a given X value
     """
@@ -90,6 +99,8 @@ def polydecode(ctx, inputfile, output, x):
 
     depth, rows, cols = data.shape
 
+    x *= multiplier
+
     depth -= 1
 
     out = (
@@ -98,6 +109,7 @@ def polydecode(ctx, inputfile, output, x):
             ), axis=2) + data[-1]
         ).astype(np.float32)
 
+    metaprof.update(**creation_options)
     metaprof.update(dtype=np.float32, count=1)
 
     verbosity = (ctx.obj and ctx.obj.get('verbosity')) or 1
