@@ -6,10 +6,11 @@ import numpy as np
 from rio_polyencode import __version__ as polyencode_version
 
 
-def read_all(inputs, reflect):
+def read_all(inputs, reflect=0):
     with rio.open(inputs[0]) as src:
         out = np.zeros(
-            (len(inputs) + reflect, src.height, src.width), dtype=src.meta["dtype"]
+            (len(inputs) + reflect, src.height, src.width),
+            dtype=src.meta["dtype"],
         )
 
     for i, p in enumerate(inputs):
@@ -22,13 +23,13 @@ def read_all(inputs, reflect):
     return out
 
 
-def poly_multid(data, pdegree=2):
+def poly_multid(data, polydegree=2):
     depth, rows, cols = data.shape
     X = np.arange(depth)
 
-    polyvals = np.dstack(np.polyfit(X, data.reshape(depth, rows * cols), pdegree))[
-        0
-    ].reshape(rows, cols, pdegree + 1)
+    polyvals = np.dstack(
+        np.polyfit(X, data.reshape(depth, rows * cols), polydegree)
+    )[0].reshape(rows, cols, polydegree + 1)
 
     return polyvals
 
@@ -55,7 +56,7 @@ def polyencode(ctx, inputfiles, output, poly_order, reflect):
 
     metaprof.update(dtype=np.float32, count=(poly_order + 1))
 
-    data = read_all(inputfiles, reflect)
+    data = read_all(inputfiles, reflect=reflect)
 
     out = poly_multid(data, poly_order).astype(np.float32)
 
@@ -66,7 +67,10 @@ def polyencode(ctx, inputfiles, output, poly_order, reflect):
 
 @click.command(short_help="")
 @click.argument(
-    "inputfile", type=click.Path(resolve_path=True), required=True, metavar="INPUT"
+    "inputfile",
+    type=click.Path(resolve_path=True),
+    required=True,
+    metavar="INPUT",
 )
 @click.argument("output", type=click.Path(resolve_path=True))
 @click.argument("x", type=float)
@@ -86,7 +90,9 @@ def polydecode(ctx, inputfile, output, x):
 
     out = (
         np.sum(
-            np.dstack([p * x ** abs(depth - d) for p, d in zip(data, range(depth))]),
+            np.dstack(
+                [p * x ** abs(depth - d) for p, d in zip(data, range(depth))]
+            ),
             axis=2,
         )
         + data[-1]
